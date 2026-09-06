@@ -247,7 +247,8 @@
     color:var(--ink-faint);
   }
   .p-note{ font-size:13.5px; color:var(--ink-soft); margin-top:5px; max-width:50ch; }
-    .go{ display:flex; flex-wrap:wrap; gap:12px; margin-top:8px; }
+    .go{ display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:8px; }
+  .go:empty{ display:none; margin-top:0; }
     .go a{
           font-family:"JetBrains Mono", monospace;
           font-size:11px;
@@ -258,6 +259,7 @@
           text-underline-offset:2px;
     }
     .go a:hover{ color:var(--accent); text-decoration-color:var(--accent); }
+  .go-dist{ font-family:"JetBrains Mono", monospace; font-size:11px; color:var(--ink-faint); opacity:0.7; }
 
   .del{
     background:none; border:none;
@@ -469,12 +471,129 @@
           return [];
     }
 
-    function renderGo(p){
-          const kind = classify(p.region, getHomeUf());
-          const links = buildLinks(kind, p);
-          if (!links.length) return '';
-          return '<div class="go">' + links.map(l => '<a href="' + esc(l.href) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>').join('') + '</div>';
+    const LS_GEOCACHE = 'mapa_destinos_geocache';
+
+  function loadGeoCache(){
+    try { return JSON.parse(localStorage.getItem(LS_GEOCACHE) || '{}'); } catch(e){ return {}; }
+  }
+
+  function saveGeoCache(cache){
+    try { localStorage.setItem(LS_GEOCACHE, JSON.stringify(cache)); } catch(e){}
+  }
+
+  function sleep(ms){ return new Promise((r) => setTimeout(r, ms)); }
+
+  let lastGeocodeAt = 0;
+
+  async function doGeocode(query){
+    const now = Date.now();
+    const wait = Math.max(0, 1100 - (now - lastGeocodeAt));
+    if (wait > 0) await sleep(wait);
+    lastGeocodeAt = Date.now();
+    try {
+      const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(query);
+      const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' } });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data || !data.length) return null;
+      return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+    } catch(e){
+      return null;
     }
+  }
+
+  let geocodeQueue = Promise.resolve();
+
+  function geocode(query){
+    const key = normalize(query).trim();
+    if (!key) return Promise.resolve(null);
+    const cache = loadGeoCache();
+    if (Object.prototype.hasOwnProperty.call(cache, key)) return Promise.resolve(cache[key]);
+    geocodeQueue = geocodeQueue.then(() => doGeocode(query)).catch(() => null);
+    return geocodeQueue.then((result) => {
+      const c = loadGeoCache();
+      c[key] = result;
+      saveGeoCache(c);
+      return result;
+    });
+  }
+
+  function haversineKm(a, b){
+    const R = 6371;
+    const dLat = (b.lat - a.lat) * Math.PI / 180;
+    const dLon = (b.lon - a.lon) * Math.PI / 180;
+    const lat1 = a.lat * Math.PI / 180;
+    const lat2 = b.lat * Math.PI / 180;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+
+  function kindByDistanceKm(km){
+    if (km <= 120) return 'perto';
+    if (km <= 500) return 'medio';
+    if (km <= 1500) return 'longe';
+    return 'muito_longe';
+  }
+
+  function buildLinksByDistance(kind, place){
+    const dest = encodeURIComponent([place.name, place.region].filter(Boolean).join(', '));
+    const origin = encodeURIComponent(getHomeCity());
+    const mapsUrl = 'https://www.google.com/maps/dir/?api=1&origin=' + origin + '&destination=' + dest + '&travelmode=driving';
+    const search = (q) => 'https://www.google.com/search?q=' + encodeURIComponent(q);
+    if (kind === 'perto'){
+      return [
+        { label: 'rota de carro', href: mapsUrl },
+        { label: 'uber', href: 'https://www.uber.com/br/pt-br/' },
+        { label: '99', href: 'https://99app.com/passageiro/' }
+        ];
+    }
+    if (kind === 'medio'){
+      return [
+        { label: 'rota de carro', href: mapsUrl },
+        { label: 'ônibus', href: search('passagem de ônibus para ' + place.name) },
+        { label: 'voos', href: search('passagem aérea para ' + place.name) }
+        ];
+    }
+    if (kind === 'longe'){
+      return [
+        { label: 'ônibus', href: search('passagem de ônibus para ' + place.name) },
+        { label: 'voos', href: search('passagem aérea para ' + place.name) }
+        ];
+    }
+    return [
+      { label: 'voos', href: search('passagem aérea para ' + place.name) }
+      ];
+  }
+
+  async function computeGoHTML(p){
+    const home = getHomeCity();
+    if (!home || !p.region) return '';
+    const destQuery = [p.name, p.region].filter(Boolean).join(', ');
+    const originCoord = await geocode(home);
+    const destCoord = await geocode(destQuery);
+    let links, distLabel = '';
+    if (originCoord && destCoord){
+      const km = haversineKm(originCoord, destCoord);
+      const kind = kindByDistanceKm(km);
+      links = buildLinksByDistance(kind, p);
+      distLabel = '<span class="go-dist">~' + Math.round(km) + ' km</span>';
+    } else {
+      const kind = classify(p.region, getHomeUf());
+      links = buildLinks(kind, p);
+    }
+    if (!links.length) return '';
+    return links.map((l) => '<a href="' + esc(l.href) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>').join('') + distLabel;
+  }
+
+  async function refreshGoLinks(list){
+    for (const p of list){
+      if (!p.region) continue;
+      let html;
+      try { html = await computeGoHTML(p); } catch(e){ html = ''; }
+      const el = document.getElementById('go-' + p.id);
+      if (el) el.innerHTML = html;
+    }
+  }
 
   let sb = null;
   let places = [];
@@ -505,7 +624,7 @@
             '<span class="p-date">' + esc(fmtDate(p.created_at)) + '</span>' +
           '</div>' +
           (p.note ? '<div class="p-note">' + esc(p.note) + '</div>' : '') +
-              renderGo(p) +
+              (p.region ? '<div class="go" id="go-' + esc(p.id) + '"></div>' : '') +
         '</div>' +
         '<button class="del" aria-label="Remover" data-action="delete">×</button>' +
       '</div>'
@@ -522,6 +641,8 @@
     $('empty-done').hidden = done.length > 0;
     $('stat-pending').textContent = pending.length;
     $('stat-done').textContent = done.length;
+
+    refreshGoLinks(pending.concat(done));
   }
 
   function wireRowActions(container){
