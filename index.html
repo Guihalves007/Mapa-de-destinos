@@ -247,6 +247,17 @@
     color:var(--ink-faint);
   }
   .p-note{ font-size:13.5px; color:var(--ink-soft); margin-top:5px; max-width:50ch; }
+    .go{ display:flex; flex-wrap:wrap; gap:12px; margin-top:8px; }
+    .go a{
+          font-family:"JetBrains Mono", monospace;
+          font-size:11px;
+          letter-spacing:0.03em;
+          color:var(--ink-faint);
+          text-decoration:underline;
+          text-decoration-color:var(--border);
+          text-underline-offset:2px;
+    }
+    .go a:hover{ color:var(--accent); text-decoration-color:var(--accent); }
 
   .del{
     background:none; border:none;
@@ -302,6 +313,12 @@
         <input id="s-key" type="text" placeholder="eyJhbGciOi..." autocomplete="off">
       </div>
     </div>
+        <div class="form-row" style="margin-top:10px">
+                <div class="field wide">
+                          <label for="s-home">Sua cidade (opcional — para sugestões de como chegar)</label>
+                          <input id="s-home" type="text" placeholder="Ex.: Esmeraldas, MG" autocomplete="off">
+                </div>
+        </div>
     <div class="form-foot">
       <button type="button" class="btn-ghost" id="btn-settings-cancel">Cancelar</button>
       <button type="button" class="btn-add" id="btn-settings-save">Salvar e conectar</button>
@@ -354,6 +371,109 @@
   const settingsPanel = $('settings');
   const LS_URL = 'mapa_destinos_sb_url';
   const LS_KEY = 'mapa_destinos_sb_key';
+    const LS_HOME = 'mapa_destinos_home';
+
+    const BR_STATES = [
+          ['acre','ac'],['alagoas','al'],['amapa','ap'],['amazonas','am'],['bahia','ba'],
+          ['ceara','ce'],['distrito federal','df'],['espirito santo','es'],['goias','go'],
+          ['maranhao','ma'],['mato grosso do sul','ms'],['mato grosso','mt'],['minas gerais','mg'],
+          ['para','pa'],['paraiba','pb'],['parana','pr'],['pernambuco','pe'],['piaui','pi'],
+          ['rio de janeiro','rj'],['rio grande do norte','rn'],['rio grande do sul','rs'],
+          ['rondonia','ro'],['roraima','rr'],['santa catarina','sc'],['sao paulo','sp'],
+          ['sergipe','se'],['tocantins','to']
+        ];
+    const BORDER_COUNTRIES = ['guiana francesa','argentina','bolivia','colombia','guiana','paraguai','peru','suriname','uruguai','venezuela'];
+
+    function normalize(s){
+          return (s || '')
+            .toLowerCase()
+            .replace(/[áàãâä]/g, 'a')
+            .replace(/[éèêë]/g, 'e')
+            .replace(/[íìîï]/g, 'i')
+            .replace(/[óòõôö]/g, 'o')
+            .replace(/[úùûü]/g, 'u')
+            .replace(/ç/g, 'c');
+    }
+
+    function detectState(text){
+          const t = normalize(text);
+          if (!t) return null;
+          const byName = BR_STATES.slice().sort((a, b) => b[0].length - a[0].length);
+          for (const [name, uf] of byName){
+                  if (t.includes(name)) return uf;
+          }
+          const tokens = t.split(/[^a-z]+/).filter(Boolean);
+          for (const [, uf] of BR_STATES){
+                  if (tokens.includes(uf)) return uf;
+          }
+          return null;
+    }
+
+    function detectBorderCountry(text){
+          const t = normalize(text);
+          for (const c of BORDER_COUNTRIES){
+                  if (t.includes(c)) return c;
+          }
+          return null;
+    }
+
+    function classify(regionText, homeUf){
+          if (!regionText) return null;
+          const uf = detectState(regionText);
+          if (uf) return (homeUf && uf === homeUf) ? 'local' : 'interestadual';
+          if (detectBorderCountry(regionText)) return 'fronteira';
+          if (normalize(regionText).includes('brasil')) return 'interestadual';
+          return 'internacional';
+    }
+
+    function getHomeCity(){
+          try { return localStorage.getItem(LS_HOME) || ''; } catch(e){ return ''; }
+    }
+
+    function getHomeUf(){
+          return detectState(getHomeCity());
+    }
+
+    function buildLinks(kind, place){
+          if (!kind) return [];
+          const dest = encodeURIComponent([place.name, place.region].filter(Boolean).join(', '));
+          const origin = encodeURIComponent(getHomeCity());
+          const mapsUrl = 'https://www.google.com/maps/dir/?api=1&origin=' + origin + '&destination=' + dest + '&travelmode=driving';
+          const search = (q) => 'https://www.google.com/search?q=' + encodeURIComponent(q);
+          if (kind === 'local'){
+                  return [
+                    { label: 'rota de carro', href: mapsUrl },
+                    { label: 'uber', href: 'https://www.uber.com/br/pt-br/' },
+                    { label: '99', href: 'https://99app.com/passageiro/' }
+                          ];
+          }
+          if (kind === 'interestadual'){
+                  return [
+                    { label: 'ônibus', href: search('passagem de ônibus para ' + place.name) },
+                    { label: 'voos', href: search('passagem aérea para ' + place.name) }
+                          ];
+          }
+          if (kind === 'fronteira'){
+                  return [
+                    { label: 'rota de carro', href: mapsUrl },
+                    { label: 'ônibus', href: search('ônibus para ' + place.name) },
+                    { label: 'voos', href: search('passagem aérea para ' + place.name) }
+                          ];
+          }
+          if (kind === 'internacional'){
+                  return [
+                    { label: 'voos', href: search('passagem aérea para ' + place.name) }
+                          ];
+          }
+          return [];
+    }
+
+    function renderGo(p){
+          const kind = classify(p.region, getHomeUf());
+          const links = buildLinks(kind, p);
+          if (!links.length) return '';
+          return '<div class="go">' + links.map(l => '<a href="' + esc(l.href) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>').join('') + '</div>';
+    }
 
   let sb = null;
   let places = [];
@@ -384,6 +504,7 @@
             '<span class="p-date">' + esc(fmtDate(p.created_at)) + '</span>' +
           '</div>' +
           (p.note ? '<div class="p-note">' + esc(p.note) + '</div>' : '') +
+              renderGo(p) +
         '</div>' +
         '<button class="del" aria-label="Remover" data-action="delete">×</button>' +
       '</div>'
@@ -449,8 +570,10 @@
   function openSettings(){
     const url = localStorage.getItem(LS_URL) || '';
     const key = localStorage.getItem(LS_KEY) || '';
+        const home = getHomeCity();
     $('s-url').value = url;
     $('s-key').value = key;
+        $('s-home').value = home;
     settingsPanel.hidden = false;
   }
   $('btn-settings').addEventListener('click', openSettings);
@@ -458,10 +581,16 @@
   $('btn-settings-save').addEventListener('click', () => {
     const url = $('s-url').value.trim();
     const key = $('s-key').value.trim();
+        const home = $('s-home').value.trim();
     if (!url || !key) return;
-    try { localStorage.setItem(LS_URL, url); localStorage.setItem(LS_KEY, key); } catch(e){}
+    try {
+        localStorage.setItem(LS_URL, url);
+        localStorage.setItem(LS_KEY, key);
+        if (home) { localStorage.setItem(LS_HOME, home); } else { localStorage.removeItem(LS_HOME); }
+    } catch(e){}
     settingsPanel.hidden = true;
     connect(url, key);
+    render();
   });
 
   async function refresh(){
