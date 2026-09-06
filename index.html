@@ -247,10 +247,18 @@
     color:var(--ink-faint);
   }
   .p-note{ font-size:13.5px; color:var(--ink-soft); margin-top:5px; max-width:50ch; }
-    .go{ display:flex; flex-direction:column; gap:5px; margin-top:8px; }
-  .go:empty{ display:none; margin-top:0; }
-  .go-group{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
-  .go-mode{ font-family:"JetBrains Mono", monospace; font-size:11px; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink-faint); opacity:0.85; }
+    .go{ display:flex; flex-direction:column; gap:10px; margin-top:8px; }
+    .go:empty{ display:none; margin-top:0; }
+    .go-group{ display:flex; flex-direction:column; gap:4px; }
+    .go-mode{
+          font-family:"JetBrains Mono", monospace;
+          font-size:11px;
+          letter-spacing:0.05em;
+          text-transform:uppercase;
+          color:var(--ink-faint);
+          opacity:0.85;
+    }
+    .go-links{ display:flex; flex-wrap:wrap; gap:18px; }
     .go a{
           font-family:"JetBrains Mono", monospace;
           font-size:11px;
@@ -259,9 +267,34 @@
           text-decoration:underline;
           text-decoration-color:var(--border);
           text-underline-offset:2px;
+          padding:4px 2px;
+          margin:-4px -2px;
+          display:inline-block;
     }
     .go a:hover{ color:var(--accent); text-decoration-color:var(--accent); }
-  .go-dist{ font-family:"JetBrains Mono", monospace; font-size:11px; color:var(--ink-faint); opacity:0.7; }
+    .go-dist{
+          font-family:"JetBrains Mono", monospace;
+          font-size:11px;
+          color:var(--ink-faint);
+          opacity:0.7;
+    }
+    .p-toggle{
+          display:inline-block;
+          background:none;
+          border:none;
+          padding:4px 0;
+          margin-top:4px;
+          font-family:"JetBrains Mono", monospace;
+          font-size:11px;
+          letter-spacing:0.03em;
+          color:var(--ink-faint);
+          text-decoration:underline;
+          text-decoration-color:var(--border);
+          text-underline-offset:2px;
+          cursor:pointer;
+    }
+    .p-toggle:hover{ color:var(--accent); text-decoration-color:var(--accent); }
+    .p-extra{ margin-top:2px; }
 
   .del{
     background:none; border:none;
@@ -291,7 +324,7 @@
   <header>
     <div>
       <div class="eyebrow">
-        <span class="pin">⚑</span>Guilherme · lista pessoal
+        <span class="pin">⚑</span><span id="user-name-label">Visitante</span> · lista pessoal
         <button class="gear" id="btn-settings" type="button">Configurar banco</button>
       </div>
       <h1>Mapa de Destinos</h1>
@@ -304,6 +337,12 @@
   </header>
 
   <div class="panel" id="settings" hidden>
+    <div class="form-row">
+        <div class="field wide">
+              <label for="s-name">Seu nome</label>
+              <input id="s-name" type="text" placeholder="Ex.: Guilherme" autocomplete="off">
+        </div>
+    </div>
     <p>Cole aqui os dados do <strong>seu</strong> projeto Supabase (em Project Settings → API): a Project URL e a chave <strong>anon public</strong>. Ficam guardados só neste navegador — nunca passam pelo Claude.</p>
     <div class="form-row">
       <div class="field wide">
@@ -376,6 +415,16 @@
   const LS_URL = 'mapa_destinos_sb_url';
   const LS_KEY = 'mapa_destinos_sb_key';
     const LS_HOME = 'mapa_destinos_home';
+    const LS_NAME = 'mapa_destinos_user_name';
+
+    function getUserNameRaw(){
+          try { return localStorage.getItem(LS_NAME) || ''; } catch(e){ return ''; }
+    }
+
+    function applyUserName(){
+          const el = document.getElementById('user-name-label');
+          if (el) el.textContent = getUserNameRaw() || 'Visitante';
+    }
 
     const BR_STATES = [
           ['acre','ac'],['alagoas','al'],['amapa','ap'],['amazonas','am'],['bahia','ba'],
@@ -563,11 +612,13 @@
       }
       if (!groups.length) return '';
       const groupsHTML = groups.map((g) =>
-        '<div class="go-group">' +
-        '<span class="go-mode">' + esc(g.label) + ':</span>' +
-        g.links.map((l) => '<a href="' + esc(l.href) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>').join('') +
-        '</div>'
-        ).join('');
+              '<div class="go-group">' +
+                '<span class="go-mode">' + esc(g.label) + ':</span>' +
+                '<div class="go-links">' +
+                  g.links.map((l) => '<a href="' + esc(l.href) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>').join('') +
+                '</div>' +
+              '</div>'
+            ).join('');
       return groupsHTML + distLabel;
     }
 
@@ -599,22 +650,26 @@
   }
 
   function renderRow(p){
-    const done = !!p.visited;
-    return (
-      '<div class="place" data-id="' + esc(p.id) + '">' +
-        '<button class="toggle' + (done ? ' on' : '') + '" aria-label="Marcar como visitado" data-action="toggle"></button>' +
-        '<div>' +
-          '<div class="p-name' + (done ? ' done' : '') + '">' + esc(p.name) + '</div>' +
-          '<div class="p-meta">' +
-            (p.region ? '<span class="tag">' + esc(p.region) + '</span>' : '') +
-            '<span class="p-date">' + esc(fmtDate(p.created_at)) + '</span>' +
-          '</div>' +
-          (p.note ? '<div class="p-note">' + esc(p.note) + '</div>' : '') +
-              (p.region ? '<div class="go" id="go-' + esc(p.id) + '"></div>' : '') +
-        '</div>' +
-        '<button class="del" aria-label="Remover" data-action="delete">×</button>' +
-      '</div>'
-    );
+        const done = !!p.visited;
+        const hasExtra = !!(p.note || p.region);
+        return (
+                '<div class="place" data-id="' + esc(p.id) + '">' +
+                  '<button class="toggle' + (done ? ' on' : '') + '" aria-label="Marcar como visitado" data-action="toggle"></button>' +
+                  '<div>' +
+                    '<div class="p-name' + (done ? ' done' : '') + '">' + esc(p.name) + '</div>' +
+                    '<div class="p-meta">' +
+                      (p.region ? '<span class="tag">' + esc(p.region) + '</span>' : '') +
+                      '<span class="p-date">' + esc(fmtDate(p.created_at)) + '</span>' +
+                    '</div>' +
+                    (hasExtra ? '<button type="button" class="p-toggle" data-action="toggle-details" aria-expanded="true">▴ ocultar detalhes</button>' : '') +
+                    (hasExtra ? '<div class="p-extra">' +
+                                 (p.note ? '<div class="p-note">' + esc(p.note) + '</div>' : '') +
+                                 (p.region ? '<div class="go" id="go-' + esc(p.id) + '"></div>' : '') +
+                               '</div>' : '') +
+                  '</div>' +
+                  '<button class="del" aria-label="Remover" data-action="delete">×</button>' +
+                '</div>'
+              );
   }
 
   function render(){
@@ -635,6 +690,17 @@
     container.addEventListener('click', async (e) => {
       const btn = e.target.closest('button[data-action]');
       if (!btn) return;
+            if (btn.dataset.action === 'toggle-details'){
+                      const row = e.target.closest('.place');
+                      const extra = row && row.querySelector('.p-extra');
+                      if (extra){
+                                  const willShow = extra.hidden;
+                                  extra.hidden = !willShow;
+                                  btn.textContent = willShow ? '▴ ocultar detalhes' : '▾ ver detalhes';
+                                  btn.setAttribute('aria-expanded', String(willShow));
+                      }
+                      return;
+            }
       const row = e.target.closest('.place');
       const id = row && row.getAttribute('data-id');
       if (!id || !sb) return;
@@ -679,7 +745,8 @@
     const url = localStorage.getItem(LS_URL) || '';
     const key = localStorage.getItem(LS_KEY) || '';
         const home = getHomeCity();
-    $('s-url').value = url;
+    $('s-name').value = getUserNameRaw();
+        $('s-url').value = url;
     $('s-key').value = key;
         $('s-home').value = home;
     settingsPanel.hidden = false;
@@ -687,16 +754,19 @@
   $('btn-settings').addEventListener('click', openSettings);
   $('btn-settings-cancel').addEventListener('click', () => { settingsPanel.hidden = true; });
   $('btn-settings-save').addEventListener('click', () => {
-    const url = $('s-url').value.trim();
+    const name = $('s-name').value.trim();
+        const url = $('s-url').value.trim();
     const key = $('s-key').value.trim();
         const home = $('s-home').value.trim();
     if (!url || !key) return;
     try {
-        localStorage.setItem(LS_URL, url);
+        if (name) { localStorage.setItem(LS_NAME, name); } else { localStorage.removeItem(LS_NAME); }
+            localStorage.setItem(LS_URL, url);
         localStorage.setItem(LS_KEY, key);
         if (home) { localStorage.setItem(LS_HOME, home); } else { localStorage.removeItem(LS_HOME); }
     } catch(e){}
-    settingsPanel.hidden = true;
+    applyUserName();
+        settingsPanel.hidden = true;
     connect(url, key);
     render();
   });
@@ -731,6 +801,7 @@
   }
 
   function init(){
+        applyUserName();
     render();
     const url = localStorage.getItem(LS_URL);
     const key = localStorage.getItem(LS_KEY);
