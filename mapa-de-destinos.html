@@ -1,0 +1,508 @@
+<title>Mapa de Destinos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Work+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
+<style>
+  :root{
+    --bg:#EEF1EF;
+    --surface:#FFFFFF;
+    --surface-2:#E2E8E4;
+    --ink:#17211D;
+    --ink-soft:#495650;
+    --ink-faint:#7C877E;
+    --border:#D2DAD4;
+    --accent:#1E7F72;
+    --accent-ink:#FFFFFF;
+    --mark:#D9552C;
+    --visited:#3F8F5F;
+    --shadow:0 1px 2px rgba(23,33,29,0.04), 0 10px 26px -14px rgba(23,33,29,0.16);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0D1210;
+      --surface:#161B18;
+      --surface-2:#1F2622;
+      --ink:#E7ECE8;
+      --ink-soft:#9FA9A3;
+      --ink-faint:#69736D;
+      --border:#2A322C;
+      --accent:#4FC2AF;
+      --accent-ink:#0B1512;
+      --mark:#F0805A;
+      --visited:#6FC98A;
+      --shadow:0 1px 2px rgba(0,0,0,0.3), 0 14px 32px -18px rgba(0,0,0,0.65);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0D1210;
+    --surface:#161B18;
+    --surface-2:#1F2622;
+    --ink:#E7ECE8;
+    --ink-soft:#9FA9A3;
+    --ink-faint:#69736D;
+    --border:#2A322C;
+    --accent:#4FC2AF;
+    --accent-ink:#0B1512;
+    --mark:#F0805A;
+    --visited:#6FC98A;
+    --shadow:0 1px 2px rgba(0,0,0,0.3), 0 14px 32px -18px rgba(0,0,0,0.65);
+  }
+
+  *{ box-sizing:border-box; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Work Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height:1.55;
+  }
+  ::selection{ background:var(--mark); color:#fff; }
+
+  .page{ max-width:720px; margin:0 auto; padding:56px 22px 90px; }
+
+  header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    gap:20px;
+    margin-bottom:34px;
+    flex-wrap:wrap;
+  }
+  .eyebrow{
+    font-family:"JetBrains Mono", monospace;
+    font-size:11.5px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:10px;
+  }
+  .eyebrow .pin{ color:var(--mark); font-size:13px; }
+  .eyebrow .gear{
+    margin-left:auto;
+    background:none; border:none; cursor:pointer;
+    color:var(--ink-faint);
+    font-family:inherit; font-size:11.5px; letter-spacing:0.1em; text-transform:uppercase;
+    text-decoration:underline; text-decoration-color:var(--border); text-underline-offset:2px;
+  }
+  .eyebrow .gear:hover{ color:var(--accent); }
+  h1{
+    font-family:"Fraunces", Georgia, serif;
+    font-optical-sizing:auto;
+    font-weight:500;
+    font-size:clamp(38px,6.4vw,54px);
+    line-height:1.02;
+    margin:0 0 8px;
+    text-wrap:balance;
+  }
+  .subhead{ color:var(--ink-soft); font-size:15.5px; max-width:44ch; margin:0; }
+
+  .stats{ display:flex; gap:22px; }
+  .stat{ text-align:right; }
+  .stat .n{
+    font-family:"JetBrains Mono", monospace;
+    font-variant-numeric:tabular-nums;
+    font-size:26px;
+    font-weight:500;
+    line-height:1;
+    color:var(--ink);
+  }
+  .stat .l{
+    font-size:10.5px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+    margin-top:4px;
+  }
+
+  .panel{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:12px;
+    box-shadow:var(--shadow);
+    padding:18px;
+    margin-bottom:40px;
+  }
+
+  #settings p{ font-size:13.5px; color:var(--ink-soft); margin:0 0 14px; }
+  #settings a{ color:var(--accent); }
+  #settings .form-foot{ display:flex; gap:10px; justify-content:flex-end; margin-top:12px; }
+  .btn-ghost{
+    background:none; border:1px solid var(--border); color:var(--ink-soft);
+    border-radius:8px; padding:10px 16px; font-size:14px;
+  }
+
+  .form-row{ display:flex; gap:10px; flex-wrap:wrap; }
+  .field{ display:flex; flex-direction:column; gap:5px; flex:1 1 180px; }
+  .field.wide{ flex-basis:100%; }
+  label{
+    font-family:"JetBrains Mono", monospace;
+    font-size:10.5px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+  }
+  input, textarea{
+    font-family:"Work Sans", sans-serif;
+    font-size:15px;
+    color:var(--ink);
+    background:var(--bg);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:9px 11px;
+    outline:none;
+    resize:none;
+    width:100%;
+  }
+  input:focus, textarea:focus{ border-color:var(--accent); }
+  textarea{ min-height:44px; font-family:inherit; }
+  .form-foot{ display:flex; justify-content:flex-end; margin-top:12px; }
+  button{ font-family:inherit; cursor:pointer; }
+  .btn-add{
+    background:var(--accent);
+    color:var(--accent-ink);
+    border:none;
+    border-radius:8px;
+    padding:10px 20px;
+    font-size:14.5px;
+    font-weight:500;
+  }
+  .btn-add:disabled{ opacity:0.5; cursor:default; }
+
+  .section-label{
+    font-family:"JetBrains Mono", monospace;
+    font-size:11px;
+    letter-spacing:0.09em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+    display:flex;
+    align-items:center;
+    gap:9px;
+    margin:0 0 14px;
+  }
+  .section-label .dot{ width:7px; height:7px; border-radius:50%; flex:none; }
+  .section-label.pending .dot{ background:var(--mark); }
+  .section-label.done .dot{ background:var(--visited); }
+
+  section{ margin-bottom:38px; }
+  .empty{
+    color:var(--ink-faint);
+    font-size:14.5px;
+    padding:16px 0 0;
+  }
+
+  .place{
+    display:grid;
+    grid-template-columns:auto 1fr auto;
+    align-items:start;
+    gap:14px;
+    padding:14px 0;
+    border-bottom:1px solid var(--border);
+  }
+  section .place:last-child{ border-bottom:none; }
+
+  .toggle{
+    width:20px; height:20px;
+    border-radius:50%;
+    border:2px solid var(--mark);
+    background:transparent;
+    margin-top:2px;
+    flex:none;
+    position:relative;
+  }
+  .toggle.on{ border-color:var(--visited); background:var(--visited); }
+  .toggle.on::after{
+    content:"✓";
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    color:var(--surface);
+    font-size:12px;
+  }
+
+  .p-name{ font-size:16px; font-weight:500; }
+  .p-name.done{ color:var(--ink-soft); text-decoration:line-through; text-decoration-color:var(--border); }
+  .p-meta{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:3px; }
+  .tag{
+    font-family:"JetBrains Mono", monospace;
+    font-size:11px;
+    color:var(--accent);
+    background:var(--surface-2);
+    padding:2px 8px;
+    border-radius:5px;
+  }
+  .p-date{
+    font-family:"JetBrains Mono", monospace;
+    font-size:11px;
+    color:var(--ink-faint);
+  }
+  .p-note{ font-size:13.5px; color:var(--ink-soft); margin-top:5px; max-width:50ch; }
+
+  .del{
+    background:none; border:none;
+    color:var(--ink-faint);
+    font-size:18px;
+    line-height:1;
+    padding:2px 4px;
+  }
+  .del:hover{ color:var(--mark); }
+
+  .status{
+    font-size:12.5px;
+    color:var(--ink-faint);
+    text-align:center;
+    margin-top:30px;
+  }
+
+  [hidden]{ display:none !important; }
+
+  @media (max-width:480px){
+    header{ align-items:flex-start; }
+    .stats{ gap:16px; }
+  }
+</style>
+
+<div class="page">
+  <header>
+    <div>
+      <div class="eyebrow">
+        <span class="pin">⚑</span>Guilherme · lista pessoal
+        <button class="gear" id="btn-settings" type="button">Configurar banco</button>
+      </div>
+      <h1>Mapa de Destinos</h1>
+      <p class="subhead">Lugares para conhecer um dia — vai crescendo com o tempo.</p>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="n" id="stat-pending">0</div><div class="l">a conhecer</div></div>
+      <div class="stat"><div class="n" id="stat-done">0</div><div class="l">visitados</div></div>
+    </div>
+  </header>
+
+  <div class="panel" id="settings" hidden>
+    <p>Cole aqui os dados do <strong>seu</strong> projeto Supabase (em Project Settings → API): a Project URL e a chave <strong>anon public</strong>. Ficam guardados só neste navegador — nunca passam pelo Claude.</p>
+    <div class="form-row">
+      <div class="field wide">
+        <label for="s-url">Project URL</label>
+        <input id="s-url" type="text" placeholder="https://xxxxxxxx.supabase.co" autocomplete="off">
+      </div>
+    </div>
+    <div class="form-row" style="margin-top:10px">
+      <div class="field wide">
+        <label for="s-key">Chave anon public</label>
+        <input id="s-key" type="text" placeholder="eyJhbGciOi..." autocomplete="off">
+      </div>
+    </div>
+    <div class="form-foot">
+      <button type="button" class="btn-ghost" id="btn-settings-cancel">Cancelar</button>
+      <button type="button" class="btn-add" id="btn-settings-save">Salvar e conectar</button>
+    </div>
+  </div>
+
+  <form class="panel" id="add-form">
+    <div class="form-row">
+      <div class="field wide">
+        <label for="f-name">Lugar</label>
+        <input id="f-name" type="text" placeholder="Ex.: Chapada Diamantina" autocomplete="off" required>
+      </div>
+    </div>
+    <div class="form-row" style="margin-top:10px">
+      <div class="field">
+        <label for="f-region">País / região (opcional)</label>
+        <input id="f-region" type="text" placeholder="Ex.: Bahia, Brasil" autocomplete="off">
+      </div>
+      <div class="field wide">
+        <label for="f-note">Por que ir (opcional)</label>
+        <textarea id="f-note" placeholder="O que te chamou atenção nesse lugar"></textarea>
+      </div>
+    </div>
+    <div class="form-foot">
+      <button type="submit" class="btn-add" id="btn-add">Adicionar à lista</button>
+    </div>
+  </form>
+
+  <section>
+    <div class="section-label pending"><span class="dot"></span>Quero conhecer</div>
+    <div id="list-pending"></div>
+    <div class="empty" id="empty-pending" hidden>Nenhum destino ainda — adicione o primeiro ali em cima.</div>
+  </section>
+
+  <section>
+    <div class="section-label done"><span class="dot"></span>Já visitei</div>
+    <div id="list-done"></div>
+    <div class="empty" id="empty-done" hidden>Marque um lugar como visitado quando for.</div>
+  </section>
+
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+(function(){
+  const $ = (id) => document.getElementById(id);
+  const form = $('add-form');
+  const btnAdd = $('btn-add');
+  const statusEl = $('status');
+  const settingsPanel = $('settings');
+  const LS_URL = 'mapa_destinos_sb_url';
+  const LS_KEY = 'mapa_destinos_sb_key';
+
+  let sb = null;
+  let places = [];
+  let channel = null;
+
+  function esc(s){
+    const d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+  }
+
+  function fmtDate(iso){
+    try{
+      const d = new Date(iso);
+      return d.toLocaleDateString('pt-BR', { day:'2-digit', month:'short', year:'numeric' });
+    } catch(e){ return ''; }
+  }
+
+  function renderRow(p){
+    const done = !!p.visited;
+    return (
+      '<div class="place" data-id="' + esc(p.id) + '">' +
+        '<button class="toggle' + (done ? ' on' : '') + '" aria-label="Marcar como visitado" data-action="toggle"></button>' +
+        '<div>' +
+          '<div class="p-name' + (done ? ' done' : '') + '">' + esc(p.name) + '</div>' +
+          '<div class="p-meta">' +
+            (p.region ? '<span class="tag">' + esc(p.region) + '</span>' : '') +
+            '<span class="p-date">' + esc(fmtDate(p.created_at)) + '</span>' +
+          '</div>' +
+          (p.note ? '<div class="p-note">' + esc(p.note) + '</div>' : '') +
+        '</div>' +
+        '<button class="del" aria-label="Remover" data-action="delete">×</button>' +
+      '</div>'
+    );
+  }
+
+  function render(){
+    const pending = places.filter(p => !p.visited);
+    const done = places.filter(p => p.visited);
+
+    $('list-pending').innerHTML = pending.map(renderRow).join('');
+    $('list-done').innerHTML = done.map(renderRow).join('');
+    $('empty-pending').hidden = pending.length > 0;
+    $('empty-done').hidden = done.length > 0;
+    $('stat-pending').textContent = pending.length;
+    $('stat-done').textContent = done.length;
+  }
+
+  function wireRowActions(container){
+    container.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const row = e.target.closest('.place');
+      const id = row && row.getAttribute('data-id');
+      if (!id || !sb) return;
+      if (btn.dataset.action === 'toggle'){
+        const p = places.find(x => x.id === id);
+        const { error } = await sb.from('places').update({ visited: !(p && p.visited) }).eq('id', id);
+        if (!error) await refresh();
+      } else if (btn.dataset.action === 'delete'){
+        const { error } = await sb.from('places').delete().eq('id', id);
+        if (!error) await refresh();
+      }
+    });
+  }
+  wireRowActions($('list-pending'));
+  wireRowActions($('list-done'));
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!sb) { openSettings(); return; }
+    const name = $('f-name').value.trim();
+    if (!name) return;
+    const region = $('f-region').value.trim();
+    const note = $('f-note').value.trim();
+    btnAdd.disabled = true;
+    const { error } = await sb.from('places').insert({
+      name: name,
+      region: region || null,
+      note: note || null,
+      visited: false
+    });
+    if (error){
+      statusEl.textContent = 'Não deu para salvar agora — confira a configuração do banco.';
+    } else {
+      form.reset();
+      statusEl.textContent = '';
+      await refresh();
+    }
+    btnAdd.disabled = false;
+  });
+
+  function openSettings(){
+    const url = localStorage.getItem(LS_URL) || '';
+    const key = localStorage.getItem(LS_KEY) || '';
+    $('s-url').value = url;
+    $('s-key').value = key;
+    settingsPanel.hidden = false;
+  }
+  $('btn-settings').addEventListener('click', openSettings);
+  $('btn-settings-cancel').addEventListener('click', () => { settingsPanel.hidden = true; });
+  $('btn-settings-save').addEventListener('click', () => {
+    const url = $('s-url').value.trim();
+    const key = $('s-key').value.trim();
+    if (!url || !key) return;
+    try { localStorage.setItem(LS_URL, url); localStorage.setItem(LS_KEY, key); } catch(e){}
+    settingsPanel.hidden = true;
+    connect(url, key);
+  });
+
+  async function refresh(){
+    if (!sb) return;
+    const { data, error } = await sb.from('places').select('*').order('created_at', { ascending: true });
+    if (error){ statusEl.textContent = 'A lista ficou temporariamente indisponível.'; return; }
+    places = data || [];
+    statusEl.textContent = '';
+    render();
+  }
+
+  function setFormEnabled(enabled){
+    form.querySelectorAll('input, textarea, button').forEach(el => el.disabled = !enabled);
+  }
+
+  function connect(url, key){
+    try{
+      sb = window.supabase.createClient(url, key);
+    } catch(e){
+      statusEl.textContent = 'URL ou chave inválida.';
+      return;
+    }
+    setFormEnabled(true);
+    refresh();
+    if (channel) { try { sb.removeChannel(channel); } catch(e){} }
+    channel = sb
+      .channel('places-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'places' }, () => { refresh(); })
+      .subscribe();
+  }
+
+  function init(){
+    render();
+    const url = localStorage.getItem(LS_URL);
+    const key = localStorage.getItem(LS_KEY);
+    if (!window.supabase){
+      statusEl.textContent = 'Não consegui carregar a biblioteca do Supabase.';
+      setFormEnabled(false);
+      return;
+    }
+    if (url && key){
+      connect(url, key);
+    } else {
+      setFormEnabled(false);
+      statusEl.textContent = 'Configure seu banco para começar a salvar lugares.';
+      openSettings();
+    }
+  }
+
+  init();
+})();
+</script>
