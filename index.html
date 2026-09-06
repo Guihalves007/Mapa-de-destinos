@@ -400,7 +400,8 @@
           if (!t) return null;
           const byName = BR_STATES.slice().sort((a, b) => b[0].length - a[0].length);
           for (const [name, uf] of byName){
-                  if (t.includes(name)) return uf;
+                  const re = new RegExp('\\b' + name.replace(/ /g, '\\s+') + '\\b');
+              if (re.test(t)) return uf;
           }
           const tokens = t.split(/[^a-z]+/).filter(Boolean);
           for (const [, uf] of BR_STATES){
