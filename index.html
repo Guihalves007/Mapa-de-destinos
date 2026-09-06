@@ -314,6 +314,9 @@
 
   [hidden]{ display:none !important; }
 
+#settings p, #geo-gate p:not(.geo-status){ font-size:13.5px; color:var(--ink-soft); margin:0 0 14px; }
+.geo-status{ font-size:13px; color:var(--ink-soft); margin:2px 0 0; }
+
   @media (max-width:480px){
     header{ align-items:flex-start; }
     .stats{ gap:16px; }
@@ -325,7 +328,7 @@
     <div>
       <div class="eyebrow">
         <span class="pin">⚑</span><span id="user-name-label">Visitante</span> · lista pessoal
-        <button class="gear" id="btn-settings" type="button">Configurar banco</button>
+        <button class="gear" id="btn-settings" type="button">Configurações</button>
       </div>
       <h1>Mapa de Destinos</h1>
       <p class="subhead">Lugares para conhecer um dia — vai crescendo com o tempo.</p>
@@ -340,10 +343,10 @@
     <div class="form-row">
         <div class="field wide">
               <label for="s-name">Seu nome</label>
-              <input id="s-name" type="text" placeholder="Ex.: Guilherme" autocomplete="off">
+              <input id="s-name" type="text" placeholder="Ex.: Maria" autocomplete="off">
         </div>
     </div>
-    <p>Cole aqui os dados do <strong>seu</strong> projeto Supabase (em Project Settings → API): a Project URL e a chave <strong>anon public</strong>. Ficam guardados só neste navegador — nunca passam pelo Claude.</p>
+    <p style="margin-top:14px">Cole aqui os dados do <strong>seu</strong> projeto Supabase (em Project Settings → API): a Project URL e a chave <strong>anon public</strong>. Ficam guardados só neste navegador.</p>
     <div class="form-row">
       <div class="field wide">
         <label for="s-url">Project URL</label>
@@ -358,8 +361,9 @@
     </div>
         <div class="form-row" style="margin-top:10px">
                 <div class="field wide">
-                          <label for="s-home">Sua cidade (opcional — para sugestões de como chegar)</label>
-                          <input id="s-home" type="text" placeholder="Ex.: Esmeraldas, MG" autocomplete="off">
+                          <label>Localização</label>
+<div class="geo-status" id="s-geo-status">Não configurada.</div>
+<button type="button" class="btn-ghost" id="btn-update-location" style="margin-top:8px; align-self:flex-start">Atualizar localização</button>
                 </div>
         </div>
     <div class="form-foot">
@@ -368,7 +372,15 @@
     </div>
   </div>
 
-  <form class="panel" id="add-form">
+  <div class="panel" id="geo-gate" hidden>
+<p>Para sugerir como chegar aos lugares (carro, ônibus ou avião), precisamos da sua localização atual.</p>
+<div class="form-foot" style="justify-content:flex-start">
+<button type="button" class="btn-add" id="btn-geo-allow">Permitir localização</button>
+</div>
+<p class="geo-status" id="geo-status"></p>
+</div>
+
+<form class="panel" id="add-form">
     <div class="form-row">
       <div class="field wide">
         <label for="f-name">Lugar</label>
@@ -415,6 +427,8 @@
   const LS_URL = 'mapa_destinos_sb_url';
   const LS_KEY = 'mapa_destinos_sb_key';
     const LS_HOME = 'mapa_destinos_home';
+    const LS_HOME_LAT = 'mapa_destinos_home_lat';
+    const LS_HOME_LON = 'mapa_destinos_home_lon';
     const LS_NAME = 'mapa_destinos_user_name';
 
     function getUserNameRaw(){
@@ -488,9 +502,28 @@
           return detectState(getHomeCity());
     }
 
+    function getHomeCoord(){
+      try {
+        const lat = parseFloat(localStorage.getItem(LS_HOME_LAT));
+        const lon = parseFloat(localStorage.getItem(LS_HOME_LON));
+        if (isNaN(lat) || isNaN(lon)) return null;
+        return { lat: lat, lon: lon };
+      } catch(e){ return null; }
+    }
+    function hasHomeCoords(){
+      return !!getHomeCoord();
+    }
+    function setHomeCoord(lat, lon){
+      try {
+        localStorage.setItem(LS_HOME_LAT, String(lat));
+        localStorage.setItem(LS_HOME_LON, String(lon));
+      } catch(e){}
+    }
+
           function transportGroups(place){
             const dest = encodeURIComponent([place.name, place.region].filter(Boolean).join(', '));
-            const origin = encodeURIComponent(getHomeCity());
+            const homeCoord = getHomeCoord();
+            const origin = encodeURIComponent(homeCoord ? (homeCoord.lat + ',' + homeCoord.lon) : getHomeCity());
             const mapsUrl = 'https://www.google.com/maps/dir/?api=1&origin=' + origin + '&destination=' + dest + '&travelmode=driving';
             const search = (q) => 'https://www.google.com/search?q=' + encodeURIComponent(q);
             return {
@@ -551,6 +584,24 @@
     }
   }
 
+  async function reverseGeocode(lat, lon){
+    const now = Date.now();
+    const wait = Math.max(0, 1100 - (now - lastGeocodeAt));
+    if (wait > 0) await sleep(wait);
+    lastGeocodeAt = Date.now();
+    try {
+      const url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lon);
+      const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' } });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data || !data.address) return null;
+      const a = data.address;
+      const city = a.city || a.town || a.village || a.municipality || a.county || '';
+      const state = a.state || '';
+      return [city, state].filter(Boolean).join(', ');
+    } catch(e){ return null; }
+  }
+
   let geocodeQueue = Promise.resolve();
 
   function geocode(query){
@@ -595,14 +646,13 @@
     }
 
     async function computeGoHTML(p){
-      const home = getHomeCity();
-      if (!home || !p.region) return '';
+      const homeCoord = getHomeCoord();
+      if (!homeCoord || !p.region) return '';
       const destQuery = [p.name, p.region].filter(Boolean).join(', ');
-      const originCoord = await geocode(home);
       const destCoord = await geocode(destQuery);
       let groups, distLabel = '';
-      if (originCoord && destCoord){
-        const km = haversineKm(originCoord, destCoord);
+      if (destCoord){
+        const km = haversineKm(homeCoord, destCoord);
         const kind = kindByDistanceKm(km);
         groups = buildLinksByDistance(kind, p);
         distLabel = '<span class="go-dist">~' + Math.round(km) + ' km</span>';
@@ -661,8 +711,8 @@
                       (p.region ? '<span class="tag">' + esc(p.region) + '</span>' : '') +
                       '<span class="p-date">' + esc(fmtDate(p.created_at)) + '</span>' +
                     '</div>' +
-                    (hasExtra ? '<button type="button" class="p-toggle" data-action="toggle-details" aria-expanded="true">▴ ocultar detalhes</button>' : '') +
-                    (hasExtra ? '<div class="p-extra">' +
+                    (hasExtra ? '<button type="button" class="p-toggle" data-action="toggle-details" aria-expanded="false">▾ ver detalhes</button>' : '') +
+                    (hasExtra ? '<div class="p-extra" hidden>' +
                                  (p.note ? '<div class="p-note">' + esc(p.note) + '</div>' : '') +
                                  (p.region ? '<div class="go" id="go-' + esc(p.id) + '"></div>' : '') +
                                '</div>' : '') +
@@ -741,14 +791,58 @@
     btnAdd.disabled = false;
   });
 
+  function updateGeoStatusLabel(){
+    const el = $('s-geo-status');
+    if (!el) return;
+    const coord = getHomeCoord();
+    if (coord){
+      const city = getHomeCity();
+      el.textContent = city ? ('Detectada: ' + city) : 'Localização configurada.';
+    } else {
+      el.textContent = 'Não configurada.';
+    }
+  }
+
+  const geoGatePanel = $('geo-gate');
+
+  function showGeoGate(){
+    if (geoGatePanel) geoGatePanel.hidden = false;
+    setFormEnabled(false);
+  }
+
+  function hideGeoGate(){
+    if (geoGatePanel) geoGatePanel.hidden = true;
+  }
+
+  async function requestLocation(){
+    const geoStatusEl = $('geo-status');
+    if (!navigator.geolocation){
+      if (geoStatusEl) geoStatusEl.textContent = 'Seu navegador não suporta localização automática.';
+      return;
+    }
+    if (geoStatusEl) geoStatusEl.textContent = 'Solicitando localização...';
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      setHomeCoord(pos.coords.latitude, pos.coords.longitude);
+      const city = await reverseGeocode(pos.coords.latitude, pos.coords.longitude);
+      if (city) { try { localStorage.setItem(LS_HOME, city); } catch(e){} }
+      updateGeoStatusLabel();
+      hideGeoGate();
+      if (sb) setFormEnabled(true);
+      render();
+    }, () => {
+      if (geoStatusEl) geoStatusEl.textContent = 'Não conseguimos acessar sua localização. Permita o acesso nas configurações do navegador e tente de novo.';
+    }, { enableHighAccuracy: false, timeout: 12000, maximumAge: 600000 });
+  }
+  $('btn-geo-allow').addEventListener('click', requestLocation);
+  $('btn-update-location').addEventListener('click', requestLocation);
+
   function openSettings(){
     const url = localStorage.getItem(LS_URL) || '';
     const key = localStorage.getItem(LS_KEY) || '';
-        const home = getHomeCity();
     $('s-name').value = getUserNameRaw();
         $('s-url').value = url;
     $('s-key').value = key;
-        $('s-home').value = home;
+      updateGeoStatusLabel();
     settingsPanel.hidden = false;
   }
   $('btn-settings').addEventListener('click', openSettings);
@@ -757,13 +851,11 @@
     const name = $('s-name').value.trim();
         const url = $('s-url').value.trim();
     const key = $('s-key').value.trim();
-        const home = $('s-home').value.trim();
     if (!url || !key) return;
     try {
         if (name) { localStorage.setItem(LS_NAME, name); } else { localStorage.removeItem(LS_NAME); }
             localStorage.setItem(LS_URL, url);
         localStorage.setItem(LS_KEY, key);
-        if (home) { localStorage.setItem(LS_HOME, home); } else { localStorage.removeItem(LS_HOME); }
     } catch(e){}
     applyUserName();
         settingsPanel.hidden = true;
@@ -792,6 +884,11 @@
       return;
     }
     setFormEnabled(true);
+    if (!hasHomeCoords()){
+      showGeoGate();
+    } else {
+      hideGeoGate();
+    }
     refresh();
     if (channel) { try { sb.removeChannel(channel); } catch(e){} }
     channel = sb
@@ -803,6 +900,7 @@
   function init(){
         applyUserName();
     render();
+    updateGeoStatusLabel();
     const url = localStorage.getItem(LS_URL);
     const key = localStorage.getItem(LS_KEY);
     if (!window.supabase){
