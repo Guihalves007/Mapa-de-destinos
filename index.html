@@ -247,8 +247,10 @@
     color:var(--ink-faint);
   }
   .p-note{ font-size:13.5px; color:var(--ink-soft); margin-top:5px; max-width:50ch; }
-    .go{ display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:8px; }
+    .go{ display:flex; flex-direction:column; gap:5px; margin-top:8px; }
   .go:empty{ display:none; margin-top:0; }
+  .go-group{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+  .go-mode{ font-family:"JetBrains Mono", monospace; font-size:11px; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink-faint); opacity:0.85; }
     .go a{
           font-family:"JetBrains Mono", monospace;
           font-size:11px;
@@ -437,42 +439,40 @@
           return detectState(getHomeCity());
     }
 
-    function buildLinks(kind, place){
-          if (!kind) return [];
-          const dest = encodeURIComponent([place.name, place.region].filter(Boolean).join(', '));
-          const origin = encodeURIComponent(getHomeCity());
-          const mapsUrl = 'https://www.google.com/maps/dir/?api=1&origin=' + origin + '&destination=' + dest + '&travelmode=driving';
-          const search = (q) => 'https://www.google.com/search?q=' + encodeURIComponent(q);
-          if (kind === 'local'){
-                  return [
-                    { label: 'rota de carro', href: mapsUrl },
-                    { label: 'uber', href: 'https://www.uber.com/br/pt-br/' },
-                    { label: '99', href: 'https://99app.com/passageiro/' }
-                          ];
+          function transportGroups(place){
+            const dest = encodeURIComponent([place.name, place.region].filter(Boolean).join(', '));
+            const origin = encodeURIComponent(getHomeCity());
+            const mapsUrl = 'https://www.google.com/maps/dir/?api=1&origin=' + origin + '&destination=' + dest + '&travelmode=driving';
+            const search = (q) => 'https://www.google.com/search?q=' + encodeURIComponent(q);
+            return {
+              carroCurto: { mode: 'carro', label: 'Carro', links: [
+                { label: 'ver rota', href: mapsUrl },
+                { label: 'uber', href: 'https://www.uber.com/br/pt-br/' },
+                { label: '99', href: 'https://99app.com/passageiro/' }
+                ]},
+              carroRota: { mode: 'carro', label: 'Carro', links: [
+                { label: 'ver rota', href: mapsUrl }
+                ]},
+              onibus: { mode: 'onibus', label: 'Ônibus', links: [
+                { label: 'ver passagens', href: search('passagem de ônibus para ' + place.name) }
+                ]},
+              voos: { mode: 'voos', label: 'Voos', links: [
+                { label: 'ver passagens', href: search('passagem aérea para ' + place.name) }
+                ]}
+            };
           }
-          if (kind === 'interestadual'){
-                  return [
-                    { label: 'ônibus', href: search('passagem de ônibus para ' + place.name) },
-                    { label: 'voos', href: search('passagem aérea para ' + place.name) }
-                          ];
-          }
-          if (kind === 'fronteira'){
-                  return [
-                    { label: 'rota de carro', href: mapsUrl },
-                    { label: 'ônibus', href: search('ônibus para ' + place.name) },
-                    { label: 'voos', href: search('passagem aérea para ' + place.name) }
-                          ];
-          }
-          if (kind === 'internacional'){
-                  return [
-                    { label: 'voos', href: search('passagem aérea para ' + place.name) }
-                          ];
-          }
-          return [];
-    }
 
-    const LS_GEOCACHE = 'mapa_destinos_geocache';
+  const LS_GEOCACHE = 'mapa_destinos_geocache';
 
+      function buildLinks(kind, place){
+        if (!kind) return [];
+        const g = transportGroups(place);
+        if (kind === 'local') return [g.carroCurto, g.onibus];
+        if (kind === 'interestadual') return [g.onibus, g.voos];
+        if (kind === 'fronteira') return [g.carroRota, g.onibus, g.voos];
+        if (kind === 'internacional') return [g.voos];
+        return [];
+      }
   function loadGeoCache(){
     try { return JSON.parse(localStorage.getItem(LS_GEOCACHE) || '{}'); } catch(e){ return {}; }
   }
@@ -529,61 +529,47 @@
   }
 
   function kindByDistanceKm(km){
-    if (km <= 120) return 'perto';
-    if (km <= 500) return 'medio';
-    if (km <= 1500) return 'longe';
-    return 'muito_longe';
-  }
+      if (km <= 50) return 'curto';
+      if (km <= 120) return 'perto';
+      if (km <= 500) return 'medio';
+      if (km <= 1500) return 'longe';
+      return 'muito_longe';
+    }
 
-  function buildLinksByDistance(kind, place){
-    const dest = encodeURIComponent([place.name, place.region].filter(Boolean).join(', '));
-    const origin = encodeURIComponent(getHomeCity());
-    const mapsUrl = 'https://www.google.com/maps/dir/?api=1&origin=' + origin + '&destination=' + dest + '&travelmode=driving';
-    const search = (q) => 'https://www.google.com/search?q=' + encodeURIComponent(q);
-    if (kind === 'perto'){
-      return [
-        { label: 'rota de carro', href: mapsUrl },
-        { label: 'uber', href: 'https://www.uber.com/br/pt-br/' },
-        { label: '99', href: 'https://99app.com/passageiro/' }
-        ];
+    function buildLinksByDistance(kind, place){
+      const g = transportGroups(place);
+      if (kind === 'curto') return [g.carroCurto];
+      if (kind === 'perto') return [g.carroCurto, g.onibus];
+      if (kind === 'medio') return [g.carroRota, g.onibus, g.voos];
+      if (kind === 'longe') return [g.onibus, g.voos];
+      return [g.voos];
     }
-    if (kind === 'medio'){
-      return [
-        { label: 'rota de carro', href: mapsUrl },
-        { label: 'ônibus', href: search('passagem de ônibus para ' + place.name) },
-        { label: 'voos', href: search('passagem aérea para ' + place.name) }
-        ];
-    }
-    if (kind === 'longe'){
-      return [
-        { label: 'ônibus', href: search('passagem de ônibus para ' + place.name) },
-        { label: 'voos', href: search('passagem aérea para ' + place.name) }
-        ];
-    }
-    return [
-      { label: 'voos', href: search('passagem aérea para ' + place.name) }
-      ];
-  }
 
-  async function computeGoHTML(p){
-    const home = getHomeCity();
-    if (!home || !p.region) return '';
-    const destQuery = [p.name, p.region].filter(Boolean).join(', ');
-    const originCoord = await geocode(home);
-    const destCoord = await geocode(destQuery);
-    let links, distLabel = '';
-    if (originCoord && destCoord){
-      const km = haversineKm(originCoord, destCoord);
-      const kind = kindByDistanceKm(km);
-      links = buildLinksByDistance(kind, p);
-      distLabel = '<span class="go-dist">~' + Math.round(km) + ' km</span>';
-    } else {
-      const kind = classify(p.region, getHomeUf());
-      links = buildLinks(kind, p);
+    async function computeGoHTML(p){
+      const home = getHomeCity();
+      if (!home || !p.region) return '';
+      const destQuery = [p.name, p.region].filter(Boolean).join(', ');
+      const originCoord = await geocode(home);
+      const destCoord = await geocode(destQuery);
+      let groups, distLabel = '';
+      if (originCoord && destCoord){
+        const km = haversineKm(originCoord, destCoord);
+        const kind = kindByDistanceKm(km);
+        groups = buildLinksByDistance(kind, p);
+        distLabel = '<span class="go-dist">~' + Math.round(km) + ' km</span>';
+      } else {
+        const kind = classify(p.region, getHomeUf());
+        groups = buildLinks(kind, p);
+      }
+      if (!groups.length) return '';
+      const groupsHTML = groups.map((g) =>
+        '<div class="go-group">' +
+        '<span class="go-mode">' + esc(g.label) + ':</span>' +
+        g.links.map((l) => '<a href="' + esc(l.href) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>').join('') +
+        '</div>'
+        ).join('');
+      return groupsHTML + distLabel;
     }
-    if (!links.length) return '';
-    return links.map((l) => '<a href="' + esc(l.href) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>').join('') + distLabel;
-  }
 
   async function refreshGoLinks(list){
     for (const p of list){
