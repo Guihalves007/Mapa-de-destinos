@@ -296,6 +296,7 @@
     .p-toggle:hover{ color:var(--accent); text-decoration-color:var(--accent); }
     .p-extra{ margin-top:2px; }
 
+  .p-actions{ display:flex; flex-direction:column; gap:2px; }
   .del{
     background:none; border:none;
     color:var(--ink-faint);
@@ -304,6 +305,16 @@
     padding:2px 4px;
   }
   .del:hover{ color:var(--mark); }
+  .edit-btn{
+    background:none; border:none;
+    color:var(--ink-faint);
+    font-size:14px;
+    line-height:1;
+    padding:2px 4px;
+  }
+  .edit-btn:hover{ color:var(--accent); }
+  .place.place-editing{ display:block; }
+  .place.place-editing .form-foot{ margin-top:10px; }
 
   .status{
     font-size:12.5px;
@@ -685,6 +696,7 @@
   let sb = null;
   let places = [];
   let channel = null;
+  let editingId = null;
 
   function esc(s){
     const d = document.createElement('div');
@@ -699,7 +711,35 @@
     } catch(e){ return ''; }
   }
 
+  function renderEditRow(p){
+    return (
+      '<div class="place place-editing" data-id="' + esc(p.id) + '">' +
+        '<div class="form-row">' +
+          '<div class="field wide">' +
+            '<label>Lugar</label>' +
+            '<input type="text" class="edit-name" value="' + esc(p.name) + '" autocomplete="off">' +
+          '</div>' +
+        '</div>' +
+        '<div class="form-row" style="margin-top:10px">' +
+          '<div class="field">' +
+            '<label>País / região (opcional)</label>' +
+            '<input type="text" class="edit-region" value="' + esc(p.region || '') + '" autocomplete="off">' +
+          '</div>' +
+          '<div class="field wide">' +
+            '<label>Por que ir (opcional)</label>' +
+            '<textarea class="edit-note">' + esc(p.note || '') + '</textarea>' +
+          '</div>' +
+        '</div>' +
+        '<div class="form-foot">' +
+          '<button type="button" class="btn-ghost" data-action="cancel-edit">Cancelar</button>' +
+          '<button type="button" class="btn-add" data-action="save-edit">Salvar</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
   function renderRow(p){
+        if (p.id === editingId) return renderEditRow(p);
         const done = !!p.visited;
         const hasExtra = !!(p.note || p.region);
         return (
@@ -717,7 +757,10 @@
                                  (p.region ? '<div class="go" id="go-' + esc(p.id) + '"></div>' : '') +
                                '</div>' : '') +
                   '</div>' +
-                  '<button class="del" aria-label="Remover" data-action="delete">×</button>' +
+                  '<div class="p-actions">' +
+                    '<button class="edit-btn" aria-label="Editar" data-action="edit">✎</button>' +
+                    '<button class="del" aria-label="Remover" data-action="delete">×</button>' +
+                  '</div>' +
                 '</div>'
               );
   }
@@ -761,6 +804,33 @@
       } else if (btn.dataset.action === 'delete'){
         const { error } = await sb.from('places').delete().eq('id', id);
         if (!error) await refresh();
+      } else if (btn.dataset.action === 'edit'){
+        editingId = id;
+        render();
+      } else if (btn.dataset.action === 'cancel-edit'){
+        editingId = null;
+        render();
+      } else if (btn.dataset.action === 'save-edit'){
+        const nameInput = row.querySelector('.edit-name');
+        const regionInput = row.querySelector('.edit-region');
+        const noteInput = row.querySelector('.edit-note');
+        const name = nameInput ? nameInput.value.trim() : '';
+        if (!name) return;
+        const region = regionInput ? regionInput.value.trim() : '';
+        const note = noteInput ? noteInput.value.trim() : '';
+        btn.disabled = true;
+        const { error } = await sb.from('places').update({
+          name: name,
+          region: region || null,
+          note: note || null
+        }).eq('id', id);
+        if (!error){
+          editingId = null;
+          await refresh();
+        } else {
+          statusEl.textContent = 'Não deu para salvar a edição agora.';
+          btn.disabled = false;
+        }
       }
     });
   }
