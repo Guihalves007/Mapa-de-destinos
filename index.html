@@ -805,9 +805,34 @@
               );
   }
 
+  function sortPlaces(list){
+    const arr = list.slice();
+    if (sortMode === 'dist-asc' || sortMode === 'dist-desc'){
+      arr.sort((a, b) => {
+        const da = (a.id in distanceCache) ? distanceCache[a.id] : null;
+        const db = (b.id in distanceCache) ? distanceCache[b.id] : null;
+        if (da == null && db == null) return 0;
+        if (da == null) return 1;
+        if (db == null) return -1;
+        return sortMode === 'dist-asc' ? da - db : db - da;
+      });
+    } else if (sortMode === 'country-asc' || sortMode === 'country-desc'){
+      arr.sort((a, b) => {
+        const ra = a.region || '';
+        const rb = b.region || '';
+        if (!ra && !rb) return 0;
+        if (!ra) return 1;
+        if (!rb) return -1;
+        const cmp = ra.localeCompare(rb, 'pt-BR', { sensitivity: 'base' });
+        return sortMode === 'country-asc' ? cmp : -cmp;
+      });
+    }
+    return arr;
+  }
+
   function render(){
-    const pending = places.filter(p => !p.visited);
-    const done = places.filter(p => p.visited);
+    const pending = sortPlaces(places.filter(p => !p.visited));
+    const done = sortPlaces(places.filter(p => p.visited));
 
     $('list-pending').innerHTML = pending.map(renderRow).join('');
     $('list-done').innerHTML = done.map(renderRow).join('');
