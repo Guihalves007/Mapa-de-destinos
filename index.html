@@ -308,11 +308,30 @@
   .edit-btn{
     background:none; border:none;
     color:var(--ink-faint);
-    font-size:14px;
+    font-size:17px;
     line-height:1;
-    padding:2px 4px;
+    padding:3px 4px;
   }
   .edit-btn:hover{ color:var(--accent); }
+  .filters{ display:flex; align-items:center; gap:10px; margin:0 0 22px; flex-wrap:wrap; }
+  .filters-label{
+    font-family:"JetBrains Mono", monospace;
+    font-size:10.5px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+  }
+  .filters select{
+    font-family:"Work Sans", sans-serif;
+    font-size:13.5px;
+    color:var(--ink);
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:7px 10px;
+    outline:none;
+  }
+  .filters select:focus{ border-color:var(--accent); }
   .place.place-editing{ display:block; }
   .place.place-editing .form-foot{ margin-top:10px; }
 
@@ -412,6 +431,17 @@
       <button type="submit" class="btn-add" id="btn-add">Adicionar à lista</button>
     </div>
   </form>
+
+  <div class="filters">
+    <label for="sort-mode" class="filters-label">Ordenar por</label>
+    <select id="sort-mode">
+      <option value="default">Mais recentes</option>
+      <option value="dist-asc">Distância — mais perto</option>
+      <option value="dist-desc">Distância — mais longe</option>
+      <option value="country-asc">País (A–Z)</option>
+      <option value="country-desc">País (Z–A)</option>
+    </select>
+  </div>
 
   <section>
     <div class="section-label pending"><span class="dot"></span>Quero conhecer</div>
@@ -658,16 +688,18 @@
 
     async function computeGoHTML(p){
       const homeCoord = getHomeCoord();
-      if (!homeCoord || !p.region) return '';
+      if (!homeCoord || !p.region) { distanceCache[p.id] = null; return ''; }
       const destQuery = [p.name, p.region].filter(Boolean).join(', ');
       const destCoord = await geocode(destQuery);
       let groups, distLabel = '';
       if (destCoord){
         const km = haversineKm(homeCoord, destCoord);
+        distanceCache[p.id] = km;
         const kind = kindByDistanceKm(km);
         groups = buildLinksByDistance(kind, p);
         distLabel = '<span class="go-dist">~' + Math.round(km) + ' km</span>';
       } else {
+        distanceCache[p.id] = null;
         const kind = classify(p.region, getHomeUf());
         groups = buildLinks(kind, p);
       }
@@ -684,12 +716,18 @@
     }
 
   async function refreshGoLinks(list){
+    let changed = false;
     for (const p of list){
       if (!p.region) continue;
+      const before = distanceCache[p.id];
       let html;
       try { html = await computeGoHTML(p); } catch(e){ html = ''; }
       const el = document.getElementById('go-' + p.id);
       if (el) el.innerHTML = html;
+      if (distanceCache[p.id] !== before) changed = true;
+    }
+    if (changed && (sortMode === 'dist-asc' || sortMode === 'dist-desc')){
+      render();
     }
   }
 
@@ -697,6 +735,8 @@
   let places = [];
   let channel = null;
   let editingId = null;
+  let distanceCache = {};
+  let sortMode = 'default';
 
   function esc(s){
     const d = document.createElement('div');
@@ -836,6 +876,11 @@
   }
   wireRowActions($('list-pending'));
   wireRowActions($('list-done'));
+
+  $('sort-mode').addEventListener('change', () => {
+    sortMode = $('sort-mode').value;
+    render();
+  });
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
